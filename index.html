@@ -6,7 +6,7 @@
 <header><h1>Household Tracker</h1><button id="logout" class="secondary hidden">Sign out</button></header>
 <main><div id="message" role="status" aria-live="polite"></div>
 <section id="login-view" class="card" style="max-width:480px;margin:40px auto"><h2>Sign in</h2><p class="muted">Use the email and password you created in Supabase Authentication.</p><form id="login-form"><label for="email">Email</label><input id="email" type="email" autocomplete="email" required><label for="password">Password</label><input id="password" type="password" autocomplete="current-password" required><div class="actions"><button type="submit">Sign in</button></div></form></section>
-<section id="app-view" class="hidden"><nav><button data-tab="dashboard" class="active">Dashboard</button><button data-tab="transactions">Transactions</button><button data-tab="savings">Savings transfers</button><button data-tab="bills">Recurring bills</button><button data-tab="maintenance">Maintenance</button></nav>
+<section id="app-view" class="hidden"><nav><button data-tab="dashboard" class="active">Dashboard</button><button data-tab="transactions">Transactions</button><button data-tab="savings">Savings transfers</button><button data-tab="mortgage">Mortgage</button><button data-tab="bills">Recurring bills</button><button data-tab="maintenance">Maintenance</button></nav>
 <section id="dashboard" class="tab"><div class="row"><div><label for="month">Reporting month</label><input id="month" type="month"></div></div><div class="grid" style="margin-top:18px"><div class="card"><div class="muted">Income</div><div id="income-total" class="metric">$0.00</div></div><div class="card"><div class="muted">Expenses</div><div id="expense-total" class="metric">$0.00</div></div><div class="card"><div class="muted">Savings &amp; contributions</div><div id="allocation-total" class="metric">$0.00</div></div><div class="card"><div class="muted">Recorded net cash flow</div><div id="net-total" class="metric">$0.00</div></div></div><p class="insight-note" id="dashboard-coverage">Only recorded transactions are included; this is not a bank balance or a complete monthly statement.</p>
 <div class="card"><h3>Short-term savings transfers</h3>
 <div class="grid"><div><div class="muted">Into savings</div><div class="metric" id="savings-in-total">$0.00</div></div><div><div class="muted">From savings</div><div class="metric" id="savings-out-total">$0.00</div></div><div><div class="muted">Net savings movement</div><div class="metric" id="savings-net-total">$0.00</div></div></div>
@@ -22,6 +22,40 @@
 <h4>Recurring bills</h4><div id="dashboard-bills" class="table-wrap"></div>
 <h4>Maintenance tasks</h4><div id="dashboard-maintenance" class="table-wrap"></div>
 <div class="actions"><button type="button" class="secondary" id="go-bills">Manage bills</button><button type="button" class="secondary" id="go-maintenance">Manage maintenance</button></div></div></section>
+
+<section id="mortgage" class="tab hidden">
+<div class="card"><h2>Mortgage &amp; home equity</h2><p class="insight-note">The mortgage ledger records principal, interest, escrow and additional principal separately from bank transactions. It does not create additional household expenses. Estimated allocations are clearly labeled.</p>
+<div class="grid">
+<div><div class="muted">Original loan</div><div class="metric" id="mortgage-original">—</div></div>
+<div><div class="muted">Latest verified principal</div><div class="metric" id="mortgage-current">—</div><div class="muted" id="mortgage-asof"></div></div>
+<div><div class="muted">Principal paid down</div><div class="metric" id="mortgage-paid">—</div></div>
+<div><div class="muted">Estimated equity</div><div class="metric" id="mortgage-equity">—</div><div class="muted" id="mortgage-equity-note">Enter a home value to estimate equity.</div></div>
+</div>
+<div class="row"><div><p class="stat-line"><span>Servicer</span><strong id="mortgage-servicer">—</strong></p><p class="stat-line"><span>Interest rate</span><strong id="mortgage-rate">—</strong></p><p class="stat-line"><span>Loan maturity</span><strong id="mortgage-maturity">—</strong></p></div><div><p class="stat-line"><span>Scheduled monthly P&amp;I</span><strong id="mortgage-pi">—</strong></p><p class="stat-line"><span>Scheduled monthly escrow</span><strong id="mortgage-escrow">—</strong></p><p class="stat-line"><span>Latest verified escrow balance</span><strong id="mortgage-escrow-balance">—</strong></p></div></div>
+</div>
+<div class="card"><h3>Mortgage payment history</h3><p id="mortgage-summary" class="insight-note"></p><div class="table-wrap"><table><thead><tr><th>Installment</th><th>Posted</th><th>Regular principal</th><th>Interest</th><th>Escrow</th><th>Extra principal</th><th>Ending balance</th><th>Evidence</th><th>Actions</th></tr></thead><tbody id="mortgage-rows"></tbody></table></div></div>
+<div class="card"><h3>Escrow-funded mortgage insurance</h3><p class="insight-note">Escrow disbursements are not additional checking-account payments. They are shown for loan and tax-record review.</p><div id="mortgage-insurance-summary" class="muted"></div><div class="table-wrap"><table><thead><tr><th>Date</th><th>Description</th><th>Amount</th></tr></thead><tbody id="mortgage-insurance-rows"></tbody></table></div></div>
+<div class="card"><h3 id="mortgage-payment-title">Record mortgage installment</h3><p class="insight-note">A mortgage installment entered here does not create a checking transaction. If you pay from GBT, record the bank payment separately under Transactions. For existing installments use Edit instead of adding another row.</p>
+<form id="mortgage-payment-form"><div class="row">
+<div><label for="mortgage-installment">Installment month</label><input type="month" id="mortgage-installment" required></div>
+<div><label for="mortgage-posted">Servicer posting date (optional)</label><input type="date" id="mortgage-posted"></div>
+<div><label for="mortgage-principal">Regular principal ($)</label><input type="number" min="0" step="0.01" id="mortgage-principal" required></div>
+<div><label for="mortgage-interest">Interest ($)</label><input type="number" min="0" step="0.01" id="mortgage-interest" required></div>
+<div><label for="mortgage-escrow-paid">Escrow contribution ($)</label><input type="number" min="0" step="0.01" id="mortgage-escrow-paid" required></div>
+<div><label for="mortgage-extra">Extra principal ($)</label><input type="number" min="0" step="0.01" id="mortgage-extra" value="0" required></div>
+<div><label for="mortgage-ending">Ending principal balance ($)</label><input type="number" min="0" step="0.01" id="mortgage-ending" required></div>
+<div><label for="mortgage-evidence">Allocation evidence</label><select id="mortgage-evidence"><option value="verified">Verified from statement</option><option value="estimated">Estimated from amortization</option></select></div>
+</div><label for="mortgage-payment-notes">Notes / source</label><input id="mortgage-payment-notes" maxlength="1000" placeholder="Statement date or servicer reference">
+<div class="actions"><button id="mortgage-payment-submit" type="submit">Save installment</button><button id="mortgage-payment-cancel" class="secondary hidden" type="button">Cancel edit</button></div></form></div>
+<div class="card"><h3>Update verified statement balance and home valuation</h3><p class="insight-note">Enter a verified principal snapshot when a new mortgage statement arrives. Home value is optional and should be dated; equity is an estimate based on that valuation, not cash available.</p>
+<form id="mortgage-snapshot-form"><div class="row">
+<div><label for="mortgage-snapshot-date">Statement date</label><input type="date" id="mortgage-snapshot-date" required></div>
+<div><label for="mortgage-snapshot-principal">Verified principal ($)</label><input type="number" min="0" step="0.01" id="mortgage-snapshot-principal" required></div>
+<div><label for="mortgage-snapshot-escrow">Escrow balance ($, optional)</label><input type="number" min="0" step="0.01" id="mortgage-snapshot-escrow"></div>
+<div><label for="mortgage-house-value">Home market value estimate ($, optional)</label><input type="number" min="0.01" step="0.01" id="mortgage-house-value"></div>
+<div><label for="mortgage-value-date">Home valuation date (if supplied)</label><input type="date" id="mortgage-value-date"></div>
+</div><div class="actions"><button type="submit" id="mortgage-snapshot-submit">Update mortgage snapshot</button></div></form></div>
+</section>
 <section id="savings" class="tab hidden">
 <div class="card"><h2 id="savings-form-title">Record savings transfer</h2>
 <p class="muted">Deposits move money into savings; withdrawals move money back into checking. Neither counts as income or spending.</p>
@@ -78,7 +112,7 @@ const supabase=createClient('https://etvaweudxebrhebuxpfh.supabase.co','sb_publi
 const $=id=>document.getElementById(id);
 const money=n=>new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format(Number(n)||0);
 const today=()=>{const d=new Date();return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-')};
-let user=null,categories=[],transactions=[],bills=[],maintenanceTasks=[],savingsTransfers=[],editingId=null,savingsEditingId=null,billEditingId=null,maintenanceEditingId=null,paymentBillId=null,busy=false,savingsBusy=false,billBusy=false,maintenanceBusy=false,paymentBusy=false,loadVersion=0;
+let user=null,categories=[],transactions=[],bills=[],maintenanceTasks=[],savingsTransfers=[],mortgageLoans=[],mortgagePayments=[],mortgageEscrowEvents=[],mortgageEditingId=null,mortgageBusy=false,editingId=null,savingsEditingId=null,billEditingId=null,maintenanceEditingId=null,paymentBillId=null,busy=false,savingsBusy=false,billBusy=false,maintenanceBusy=false,paymentBusy=false,loadVersion=0;
 function notify(message,bad=false){$('message').textContent=message;$('message').className=bad?'error':'success'}
 function showLogin(signedIn){$('login-view').classList.toggle('hidden',signedIn);$('app-view').classList.toggle('hidden',!signedIn);$('logout').classList.toggle('hidden',!signedIn)}
 function categoryFor(id){return categories.find(c=>c.id===id)}
@@ -198,10 +232,67 @@ $('savings-form').onsubmit=async e=>{e.preventDefault();if(!user||savingsBusy)re
  const date=$('savings-date').value,source_bank=$('savings-bank').value,direction=$('savings-direction').value,amount=Number($('savings-amount').value),description=$('savings-description').value.trim(),notes=$('savings-notes').value.trim();
  if(!date||!['GBT','HB','Other'].includes(source_bank)||!['deposit','withdrawal'].includes(direction)||!Number.isFinite(amount)||amount<=0)return notify('Enter a valid date, bank, direction, and positive amount.',true);
  savingsBusy=true;$('savings-submit').disabled=true;try{const row={transfer_date:date,source_bank,direction,amount,description,notes};const update=!!savingsEditingId;const result=update?await supabase.from('savings_transfers').update(row).eq('id',savingsEditingId).eq('user_id',user.id).select('id'):await supabase.from('savings_transfers').insert({...row,user_id:user.id}).select('id');if(result.error)throw result.error;if(!result.data?.length)throw new Error('No transfer was saved.');resetSavingsForm();await load();notify(update?'Savings transfer updated.':'Savings transfer saved.')}catch(err){notify('Unable to save savings transfer: '+err.message,true)}finally{savingsBusy=false;$('savings-submit').disabled=false}};
+
+function renderMortgage(){
+ const loan=mortgageLoans[0];
+ if(!loan){$('mortgage-summary').textContent='No mortgage is registered.';return}
+ const principal=Number(loan.verified_principal),original=Number(loan.original_principal),homeValue=Number(loan.home_value_estimate);
+ $('mortgage-original').textContent=money(original);$('mortgage-current').textContent=money(principal);
+ $('mortgage-asof').textContent=loan.verified_principal_as_of?'Verified '+loan.verified_principal_as_of:'';
+ $('mortgage-paid').textContent=money(original-principal);$('mortgage-servicer').textContent=loan.current_servicer;
+ $('mortgage-rate').textContent=Number(loan.annual_interest_rate).toFixed(3)+'%';
+ $('mortgage-maturity').textContent=loan.maturity_date||'Not set';$('mortgage-pi').textContent=money(loan.scheduled_principal_interest);
+ $('mortgage-escrow').textContent=money(loan.scheduled_escrow);
+ $('mortgage-escrow-balance').textContent=loan.escrow_balance==null?'Not recorded':money(loan.escrow_balance);
+ $('mortgage-equity').textContent=homeValue>0?money(homeValue-principal):'—';
+ $('mortgage-equity-note').textContent=homeValue>0?'Using '+money(homeValue)+' valuation dated '+(loan.home_value_as_of||'unspecified'):'Enter a home value to estimate equity.';
+ const regular=mortgagePayments.reduce((s,p)=>s+Number(p.principal_regular),0), extra=mortgagePayments.reduce((s,p)=>s+Number(p.additional_principal),0),interest=mortgagePayments.reduce((s,p)=>s+Number(p.interest),0);
+ $('mortgage-summary').textContent=mortgagePayments.length+' installments recorded · '+money(regular+extra)+' principal reduction (including '+money(extra)+' extra) · '+money(interest)+' interest. Estimated allocations are not confirmed tax totals.';
+ const body=$('mortgage-rows');body.replaceChildren();
+ for(const p of [...mortgagePayments].sort((a,b)=>a.installment_month.localeCompare(b.installment_month))){
+  const tr=document.createElement('tr');for(const value of [p.installment_month.slice(0,7),p.actual_payment_date||'Unknown',money(p.principal_regular),money(p.interest),money(p.escrow_contribution),money(p.additional_principal),money(p.ending_principal),p.allocation_status==='verified'?'Verified':'Estimated']){
+   const td=document.createElement('td');td.textContent=value;tr.append(td)
+  }
+  const td=document.createElement('td'),btn=document.createElement('button');btn.className='secondary small';btn.textContent='Edit';btn.onclick=()=>editMortgagePayment(p.id);td.append(btn);tr.append(td);body.append(tr)
+ }
+ const total=mortgageEscrowEvents.reduce((s,e)=>s+Number(e.amount),0);
+ $('mortgage-insurance-summary').textContent=mortgageEscrowEvents.length+' escrow disbursements · '+money(total)+' total recorded.';
+ const ins=$('mortgage-insurance-rows');ins.replaceChildren();for(const e of [...mortgageEscrowEvents].sort((a,b)=>a.disbursement_date.localeCompare(b.disbursement_date))){const tr=document.createElement('tr');for(const value of [e.disbursement_date,e.description,money(e.amount)]){const td=document.createElement('td');td.textContent=value;tr.append(td)}ins.append(tr)}
+ if(!mortgageEditingId){$('mortgage-installment').value=today().slice(0,7);$('mortgage-principal').value='';$('mortgage-interest').value='';$('mortgage-posted').value='';$('mortgage-payment-notes').value='';$('mortgage-escrow-paid').value=loan.scheduled_escrow;$('mortgage-extra').value='0';$('mortgage-ending').value=''}
+ $('mortgage-snapshot-date').value=loan.verified_principal_as_of||today();$('mortgage-snapshot-principal').value=loan.verified_principal;
+ $('mortgage-snapshot-escrow').value=loan.escrow_balance??'';$('mortgage-house-value').value=loan.home_value_estimate??'';
+ $('mortgage-value-date').value=loan.home_value_as_of||'';
+}
+function resetMortgageForm(){mortgageEditingId=null;$('mortgage-payment-form').reset();$('mortgage-payment-title').textContent='Record mortgage installment';$('mortgage-payment-submit').textContent='Save installment';$('mortgage-payment-cancel').classList.add('hidden');renderMortgage()}
+function editMortgagePayment(id){const p=mortgagePayments.find(x=>x.id===id);if(!p)return;mortgageEditingId=id;
+ $('mortgage-installment').value=p.installment_month.slice(0,7);$('mortgage-posted').value=p.actual_payment_date||'';
+ $('mortgage-principal').value=p.principal_regular;$('mortgage-interest').value=p.interest;$('mortgage-escrow-paid').value=p.escrow_contribution;
+ $('mortgage-extra').value=p.additional_principal;$('mortgage-ending').value=p.ending_principal;
+ $('mortgage-evidence').value=p.allocation_status;$('mortgage-payment-notes').value=p.notes||'';
+ $('mortgage-payment-title').textContent='Edit mortgage installment';$('mortgage-payment-submit').textContent='Update installment';$('mortgage-payment-cancel').classList.remove('hidden');$('mortgage-payment-form').scrollIntoView({behavior:'smooth',block:'start'})}
+$('mortgage-payment-cancel').onclick=resetMortgageForm;
+$('mortgage-payment-form').onsubmit=async e=>{e.preventDefault();if(!user||mortgageBusy||!mortgageLoans.length)return;
+ const v=id=>Number($(id).value),inst=$('mortgage-installment').value,pi=v('mortgage-principal'),interest=v('mortgage-interest'),escrow=v('mortgage-escrow-paid'),extra=v('mortgage-extra'),ending=v('mortgage-ending');
+ if(!inst||![pi,interest,escrow,extra,ending].every(x=>Number.isFinite(x)&&x>=0))return notify('Enter valid mortgage amounts and installment month.',true);
+ const isUpdate=!!mortgageEditingId,duplicate=mortgagePayments.some(p=>p.installment_month===inst+'-01'&&p.id!==mortgageEditingId);
+ if(duplicate)return notify('This installment already exists. Edit the existing row instead.',true);
+ const row={installment_month:inst+'-01',actual_payment_date:$('mortgage-posted').value||null,principal_regular:pi,interest,escrow_contribution:escrow,regular_payment:Math.round((pi+interest+escrow)*100)/100,additional_principal:extra,ending_principal:ending,allocation_status:$('mortgage-evidence').value,notes:$('mortgage-payment-notes').value.trim(),servicer:isUpdate?(mortgagePayments.find(x=>x.id===mortgageEditingId)?.servicer||mortgageLoans[0].current_servicer):mortgageLoans[0].current_servicer};
+ mortgageBusy=true;$('mortgage-payment-submit').disabled=true;
+ try{const table=supabase.from('mortgage_payments');const result=isUpdate?await table.update(row).eq('id',mortgageEditingId).eq('user_id',user.id).select('id'):await table.insert({...row,loan_id:mortgageLoans[0].id,user_id:user.id}).select('id');if(result.error)throw result.error;if(!result.data?.length)throw new Error('No mortgage installment was saved.');mortgageEditingId=null;await load();$('mortgage-payment-title').textContent='Record mortgage installment';$('mortgage-payment-submit').textContent='Save installment';$('mortgage-payment-cancel').classList.add('hidden');notify(isUpdate?'Mortgage installment updated.':'Mortgage installment saved. No additional bank expense was created.')}
+ catch(err){notify('Unable to save mortgage installment: '+err.message,true)}finally{mortgageBusy=false;$('mortgage-payment-submit').disabled=false}
+};
+$('mortgage-snapshot-form').onsubmit=async e=>{e.preventDefault();if(!user||mortgageBusy||!mortgageLoans.length)return;
+ const date=$('mortgage-snapshot-date').value,principal=Number($('mortgage-snapshot-principal').value),escraw=$('mortgage-snapshot-escrow').value,home=$('mortgage-house-value').value,valueDate=$('mortgage-value-date').value;
+ if(!date||!Number.isFinite(principal)||principal<0||escraw!==''&&(!Number.isFinite(Number(escraw))||Number(escraw)<0)||home!==''&&(!Number.isFinite(Number(home))||Number(home)<=0)||home!==''&&!valueDate)return notify('Enter a valid dated principal balance and, if provided, a dated home valuation.',true);
+ mortgageBusy=true;$('mortgage-snapshot-submit').disabled=true;
+ try{const row={verified_principal:principal,verified_principal_as_of:date,escrow_balance:escraw===''?null:Number(escraw),escrow_balance_as_of:escraw===''?null:date,home_value_estimate:home===''?null:Number(home),home_value_as_of:home===''?null:valueDate};
+ const r=await supabase.from('mortgage_loans').update(row).eq('id',mortgageLoans[0].id).eq('user_id',user.id).select('id');if(r.error)throw r.error;if(!r.data?.length)throw new Error('Mortgage record not updated.');await load();notify('Verified mortgage snapshot updated. Existing payments remain unchanged.')}
+ catch(err){notify('Unable to update mortgage snapshot: '+err.message,true)}finally{mortgageBusy=false;$('mortgage-snapshot-submit').disabled=false}
+};
 function render(){
  const options=categories.map(c=>{const o=document.createElement('option');o.value=c.id;o.textContent=c.section+' — '+c.name;return o});
  for(const [id,placeholder] of [['transaction-category','Select category'],['filter-category','All categories']]){const select=$(id),old=select.value;select.replaceChildren();const empty=document.createElement('option');empty.value='';empty.textContent=placeholder;select.append(empty,...options.map(o=>o.cloneNode(true)));select.value=old}
- renderSavings();
+ renderSavings();renderMortgage();
  const filtered=transactions.filter(t=>(!$('filter-month').value||t.transaction_date?.startsWith($('filter-month').value))&&(!$('filter-category').value||t.category_id===$('filter-category').value)&&(!$('filter-account').value||($('filter-account').value==='unset'?!t.bank_account:t.bank_account===$('filter-account').value)));
  $('transaction-count').textContent=filtered.length+' transaction(s) shown'+(transactions.length===1000?' (latest 1,000 loaded)':'');
  const tbody=$('transaction-rows');tbody.replaceChildren();
@@ -212,10 +303,10 @@ function render(){
  renderMaintenance();
  renderObligations();
 }
-async function load(){const version=++loadVersion;const [c,t,b,m,st]=await Promise.all([supabase.from('categories').select('id,section,name').order('section').order('name'),supabase.from('transactions').select('*').order('transaction_date',{ascending:false}).limit(1000),supabase.from('recurring_bills').select('*').order('next_due_date',{ascending:true}).limit(1000),supabase.from('maintenance_tasks').select('*').order('due_date',{ascending:true,nullsFirst:false}).limit(1000),supabase.from('savings_transfers').select('*').order('transfer_date',{ascending:false}).limit(1000)]);if(c.error)throw c.error;if(t.error)throw t.error;if(b.error)throw b.error;if(m.error)throw m.error;if(st.error)throw st.error;if(version!==loadVersion)return;categories=c.data||[];transactions=t.data||[];bills=b.data||[];maintenanceTasks=m.data||[];savingsTransfers=st.data||[];render();if(!categories.length)notify('No categories found for your account.',true)}
+async function load(){const version=++loadVersion;const [c,t,b,m,st,ml,mp,me]=await Promise.all([supabase.from('categories').select('id,section,name').order('section').order('name'),supabase.from('transactions').select('*').order('transaction_date',{ascending:false}).limit(1000),supabase.from('recurring_bills').select('*').order('next_due_date',{ascending:true}).limit(1000),supabase.from('maintenance_tasks').select('*').order('due_date',{ascending:true,nullsFirst:false}).limit(1000),supabase.from('savings_transfers').select('*').order('transfer_date',{ascending:false}).limit(1000),supabase.from('mortgage_loans').select('*').limit(20),supabase.from('mortgage_payments').select('*').order('installment_month',{ascending:true}).limit(1000),supabase.from('mortgage_escrow_disbursements').select('*').order('disbursement_date',{ascending:true}).limit(1000)]);if(c.error)throw c.error;if(t.error)throw t.error;if(b.error)throw b.error;if(m.error)throw m.error;if(st.error)throw st.error;if(ml.error)throw ml.error;if(mp.error)throw mp.error;if(me.error)throw me.error;if(version!==loadVersion)return;categories=c.data||[];transactions=t.data||[];bills=b.data||[];maintenanceTasks=m.data||[];savingsTransfers=st.data||[];mortgageLoans=ml.data||[];mortgagePayments=mp.data||[];mortgageEscrowEvents=me.data||[];render();if(!categories.length)notify('No categories found for your account.',true)}
 async function refreshAuth(){const {data:{user:u},error}=await supabase.auth.getUser();if(error&&error.name!=='AuthSessionMissingError')notify(error.message,true);user=u;showLogin(!!user);if(user){try{await load()}catch(e){notify('Unable to load data: '+e.message,true)}}}
 $('login-form').onsubmit=async e=>{e.preventDefault();notify('Signing in…');const {error}=await supabase.auth.signInWithPassword({email:$('email').value,password:$('password').value});if(error)return notify(error.message,true);$('password').value='';notify('Signed in.');await refreshAuth()};
-$('logout').onclick=async()=>{const {error}=await supabase.auth.signOut();if(error)return notify(error.message,true);++loadVersion;user=null;categories=[];transactions=[];bills=[];maintenanceTasks=[];resetForm();resetBillForm();resetMaintenanceForm();cancelPayment();notify('Signed out.');showLogin(false)};
+$('logout').onclick=async()=>{const {error}=await supabase.auth.signOut();if(error)return notify(error.message,true);++loadVersion;user=null;categories=[];transactions=[];bills=[];maintenanceTasks=[];savingsTransfers=[];mortgageLoans=[];mortgagePayments=[];mortgageEscrowEvents=[];mortgageEditingId=null;resetForm();resetBillForm();resetMaintenanceForm();cancelPayment();notify('Signed out.');showLogin(false)};
 document.querySelectorAll('[data-tab]').forEach(button=>button.onclick=()=>{document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',b===button));document.querySelectorAll('.tab').forEach(tab=>tab.classList.toggle('hidden',tab.id!==button.dataset.tab))});
 $('go-bills').onclick=()=>document.querySelector('[data-tab="bills"]').click();$('go-maintenance').onclick=()=>document.querySelector('[data-tab="maintenance"]').click();
 $('month').value=today().slice(0,7);$('month').onchange=render;$('filter-month').onchange=render;$('filter-category').onchange=render;$('filter-account').onchange=render;$('transaction-date').value=today();$('savings-date').value=today();$('savings-month').value=today().slice(0,7);$('cancel-edit').onclick=resetForm;
