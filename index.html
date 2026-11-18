@@ -26,7 +26,7 @@
 <label for="bill-notes">Notes</label><textarea id="bill-notes" name="notes" rows="2" maxlength="1000" placeholder="Optional account reminders (do not enter passwords or account numbers)"></textarea>
 <div class="actions"><button type="submit" id="bill-submit">Save recurring bill</button><button type="button" id="bill-cancel" class="secondary hidden">Cancel edit</button></div>
 </form></div>
-<div class="card"><h2>Recurring bills</h2><div class="row"><div><label for="bill-filter">Show bills</label><select id="bill-filter"><option value="active">Active</option><option value="all">All</option><option value="inactive">Inactive</option></select></div></div>
+<div id="payment-panel" class="card hidden"><h2>Record payment</h2><p id="payment-bill-detail" class="muted"></p><form id="payment-form"><div class="row"><div><label for="payment-date">Payment date</label><input id="payment-date" name="payment_date" type="date" required></div><div><label for="payment-amount">Paid amount ($)</label><input id="payment-amount" name="paid_amount" type="number" min="0.01" step="0.01" required></div></div><label for="payment-description">Transaction description</label><input id="payment-description" name="description" maxlength="250" required><p id="payment-next-detail" class="muted"></p><div class="actions"><button id="payment-submit" type="submit">Record payment &amp; advance due date</button><button id="payment-cancel" type="button" class="secondary">Cancel</button></div></form></div><div class="card"><h2>Recurring bills</h2><div class="row"><div><label for="bill-filter">Show bills</label><select id="bill-filter"><option value="active">Active</option><option value="all">All</option><option value="inactive">Inactive</option></select></div></div>
 <p id="bill-summary" class="muted"></p>
 <div class="table-wrap"><table><thead><tr><th>Name</th><th>Category</th><th>Expected</th><th>Frequency</th><th>Next due</th><th>Status</th><th>Actions</th></tr></thead><tbody id="bill-rows"></tbody></table></div></div>
 </section><section id="maintenance" class="tab hidden"><div class="card"><h2>Maintenance</h2><p class="muted">This section is coming next. Your maintenance_tasks table is ready.</p></div></section></section></main>
@@ -37,7 +37,7 @@ const supabase=createClient('https://etvaweudxebrhebuxpfh.supabase.co','sb_publi
 const $=id=>document.getElementById(id);
 const money=n=>new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format(Number(n)||0);
 const today=()=>{const d=new Date();return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-')};
-let user=null,categories=[],transactions=[],bills=[],editingId=null,billEditingId=null,busy=false,billBusy=false,loadVersion=0;
+let user=null,categories=[],transactions=[],bills=[],editingId=null,billEditingId=null,paymentBillId=null,busy=false,billBusy=false,paymentBusy=false,loadVersion=0;
 function notify(message,bad=false){$('message').textContent=message;$('message').className=bad?'error':'success'}
 function showLogin(signedIn){$('login-view').classList.toggle('hidden',signedIn);$('app-view').classList.toggle('hidden',!signedIn);$('logout').classList.toggle('hidden',!signedIn)}
 function categoryFor(id){return categories.find(c=>c.id===id)}
@@ -54,7 +54,7 @@ function renderBills(){
    const tr=document.createElement('tr'),cat=categoryFor(b.category_id);
    const dueState=b.active?(b.next_due_date<today()?'Overdue':b.next_due_date===today()?'Due today':'Upcoming'):'Inactive';
    for(const value of [b.name,cat?.name||'Unknown',money(b.expected_amount),{weekly:'Weekly',biweekly:'Every 2 weeks',monthly:'Monthly',quarterly:'Quarterly',semiannual:'Every 6 months',annual:'Annual'}[b.frequency]||b.frequency,b.next_due_date,dueState]){const td=document.createElement('td');td.textContent=value;tr.append(td)}
-   const td=document.createElement('td'),edit=document.createElement('button'),del=document.createElement('button');edit.textContent='Edit';edit.className='secondary small';edit.onclick=()=>startBillEdit(b.id);del.textContent='Delete';del.className='danger small';del.style.marginLeft='6px';del.onclick=()=>deleteBill(b.id);td.append(edit,del);tr.append(td);body.append(tr)
+   const td=document.createElement('td'),pay=document.createElement('button'),edit=document.createElement('button'),del=document.createElement('button');if(b.active){pay.textContent='Record payment';pay.className='small';pay.style.marginRight='6px';pay.onclick=()=>startPayment(b.id);td.append(pay)}edit.textContent='Edit';edit.className='secondary small';edit.onclick=()=>startBillEdit(b.id);del.textContent='Delete';del.className='danger small';del.style.marginLeft='6px';del.onclick=()=>deleteBill(b.id);td.append(edit,del);tr.append(td);body.append(tr)
  }
  if(!visible.length){const tr=document.createElement('tr'),td=document.createElement('td');td.colSpan=7;td.textContent='No recurring bills in this view.';tr.append(td);body.append(tr)}
 }
@@ -72,7 +72,7 @@ function render(){
 async function load(){const version=++loadVersion;const [c,t,b]=await Promise.all([supabase.from('categories').select('id,section,name').order('section').order('name'),supabase.from('transactions').select('*').order('transaction_date',{ascending:false}).limit(1000),supabase.from('recurring_bills').select('*').order('next_due_date',{ascending:true}).limit(1000)]);if(c.error)throw c.error;if(t.error)throw t.error;if(b.error)throw b.error;if(version!==loadVersion)return;categories=c.data||[];transactions=t.data||[];bills=b.data||[];render();if(!categories.length)notify('No categories found for your account.',true)}
 async function refreshAuth(){const {data:{user:u},error}=await supabase.auth.getUser();if(error&&error.name!=='AuthSessionMissingError')notify(error.message,true);user=u;showLogin(!!user);if(user){try{await load()}catch(e){notify('Unable to load data: '+e.message,true)}}}
 $('login-form').onsubmit=async e=>{e.preventDefault();notify('Signing in…');const {error}=await supabase.auth.signInWithPassword({email:$('email').value,password:$('password').value});if(error)return notify(error.message,true);$('password').value='';notify('Signed in.');await refreshAuth()};
-$('logout').onclick=async()=>{const {error}=await supabase.auth.signOut();if(error)return notify(error.message,true);++loadVersion;user=null;categories=[];transactions=[];bills=[];resetForm();resetBillForm();notify('Signed out.');showLogin(false)};
+$('logout').onclick=async()=>{const {error}=await supabase.auth.signOut();if(error)return notify(error.message,true);++loadVersion;user=null;categories=[];transactions=[];bills=[];resetForm();resetBillForm();cancelPayment();notify('Signed out.');showLogin(false)};
 document.querySelectorAll('[data-tab]').forEach(button=>button.onclick=()=>{document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',b===button));document.querySelectorAll('.tab').forEach(tab=>tab.classList.toggle('hidden',tab.id!==button.dataset.tab))});
 $('month').value=today().slice(0,7);$('month').onchange=render;$('filter-month').onchange=render;$('filter-category').onchange=render;$('transaction-date').value=today();$('cancel-edit').onclick=resetForm;
 function startEdit(id){const t=transactions.find(x=>x.id===id);if(!t)return;editingId=id;$('transaction-date').value=t.transaction_date;$('transaction-category').value=t.category_id;$('transaction-amount').value=t.amount;$('transaction-description').value=t.description||'';$('form-title').textContent='Edit transaction';$('save-transaction').textContent='Update transaction';$('cancel-edit').classList.remove('hidden');$('transaction-form').scrollIntoView({behavior:'smooth',block:'start'})}
@@ -81,6 +81,48 @@ async function removeTransaction(id){if(!user||!confirm('Delete this transaction
 $('bill-due').value=today();$('bill-filter').onchange=renderBills;$('bill-cancel').onclick=resetBillForm;
 function startBillEdit(id){const b=bills.find(x=>x.id===id);if(!b)return;billEditingId=id;const f=$('bill-form');f.elements.name.value=b.name;f.elements.category_id.value=b.category_id;f.elements.expected_amount.value=b.expected_amount;f.elements.frequency.value=b.frequency;f.elements.next_due_date.value=b.next_due_date;f.elements.active.value=String(b.active);f.elements.notes.value=b.notes||'';$('bill-form-title').textContent='Edit recurring bill';$('bill-submit').textContent='Update recurring bill';$('bill-cancel').classList.remove('hidden');f.scrollIntoView({behavior:'smooth',block:'start'})}
 $('bill-form').onsubmit=async e=>{e.preventDefault();if(!user||billBusy)return;const f=new FormData(e.currentTarget);const row={name:String(f.get('name')||'').trim(),category_id:f.get('category_id'),expected_amount:Number(f.get('expected_amount')),frequency:f.get('frequency'),next_due_date:f.get('next_due_date'),active:f.get('active')==='true',notes:String(f.get('notes')||'').trim()||null};if(!row.name||!row.category_id||!row.next_due_date||!Number.isFinite(row.expected_amount)||row.expected_amount<0)return notify('Enter a name, category, expected amount, and due date.',true);billBusy=true;$('bill-submit').disabled=true;try{const updating=!!billEditingId;const result=updating?await supabase.from('recurring_bills').update(row).eq('id',billEditingId).eq('user_id',user.id).select('id'):await supabase.from('recurring_bills').insert({...row,user_id:user.id}).select('id');if(result.error)throw result.error;if(!result.data?.length)throw new Error('No bill was saved.');resetBillForm();await load();notify(updating?'Recurring bill updated.':'Recurring bill saved.')}catch(error){notify('Unable to save recurring bill: '+error.message,true)}finally{billBusy=false;$('bill-submit').disabled=false}};
-async function deleteBill(id){if(!user||!confirm('Permanently delete this recurring bill schedule? Recorded transactions will not be affected.'))return;try{const {data,error}=await supabase.from('recurring_bills').delete().eq('id',id).eq('user_id',user.id).select('id');if(error)throw error;if(!data?.length)throw new Error('Bill not found.');if(billEditingId===id)resetBillForm();await load();notify('Recurring bill deleted.')}catch(error){notify('Unable to delete recurring bill: '+error.message,true)}}
+async function deleteBill(id){if(!user||!confirm('Permanently delete this recurring bill schedule? Recorded transactions will not be affected.'))return;try{const {data,error}=await supabase.from('recurring_bills').delete().eq('id',id).eq('user_id',user.id).select('id');if(error)throw error;if(!data?.length)throw new Error('Bill not found.');if(billEditingId===id)resetBillForm();if(paymentBillId===id)cancelPayment();await load();notify('Recurring bill deleted.')}catch(error){notify('Unable to delete recurring bill: '+error.message,true)}}
+// Date-only arithmetic in UTC preserves due dates across DST and month ends.
+function advanceDueDate(date,frequency){
+ const parts=date.split('-').map(Number);const [year,month,day]=parts;
+ if(parts.length!==3||!year||!month||!day)throw new Error('Invalid next due date.');
+ const increments={weekly:7,biweekly:14};
+ if(increments[frequency]){const dt=new Date(Date.UTC(year,month-1,day));dt.setUTCDate(dt.getUTCDate()+increments[frequency]);return dt.toISOString().slice(0,10)}
+ const months={monthly:1,quarterly:3,semiannual:6,annual:12}[frequency];
+ if(!months)throw new Error('Unsupported payment frequency.');
+ const target=new Date(Date.UTC(year,month-1+months,1));const lastDay=new Date(Date.UTC(target.getUTCFullYear(),target.getUTCMonth()+1,0)).getUTCDate();target.setUTCDate(Math.min(day,lastDay));return target.toISOString().slice(0,10)
+}
+function cancelPayment(){paymentBillId=null;$('payment-panel').classList.add('hidden');$('payment-form').reset()}
+function startPayment(id){
+ const bill=bills.find(b=>b.id===id);if(!bill||!bill.active)return;
+ paymentBillId=id;$('payment-date').value=today();$('payment-amount').value=bill.expected_amount;$('payment-description').value=bill.name+' payment';
+ $('payment-bill-detail').textContent=bill.name+' · '+money(bill.expected_amount)+' expected · scheduled '+bill.next_due_date;
+ $('payment-next-detail').textContent='Once recorded, the next due date advances to '+advanceDueDate(bill.next_due_date,bill.frequency)+'. This creates one actual expense transaction.';
+ $('payment-panel').classList.remove('hidden');$('payment-panel').scrollIntoView({behavior:'smooth',block:'start'})
+}
+$('payment-cancel').onclick=cancelPayment;
+$('payment-form').onsubmit=async e=>{
+ e.preventDefault();if(!user||paymentBusy||!paymentBillId)return;
+ const bill=bills.find(b=>b.id===paymentBillId);if(!bill||!bill.active)return notify('This bill is not active.',true);
+ const date=$('payment-date').value,amount=Number($('payment-amount').value),description=$('payment-description').value.trim();
+ if(!date||!Number.isFinite(amount)||amount<=0||!description)return notify('Enter a valid payment date, amount and description.',true);
+ const nextDue=advanceDueDate(bill.next_due_date,bill.frequency);
+ paymentBusy=true;$('payment-submit').disabled=true;
+ let insertedId=null;
+ try{
+  // Record the expense first. The schedule advances only after insertion succeeds.
+  const inserted=await supabase.from('transactions').insert({user_id:user.id,category_id:bill.category_id,transaction_date:date,amount,description,status:'paid'}).select('id').single();
+  if(inserted.error)throw inserted.error;insertedId=inserted.data?.id;
+  if(!insertedId)throw new Error('Payment insert did not return an ID. Check Transactions before retrying.');
+  const updated=await supabase.from('recurring_bills').update({next_due_date:nextDue}).eq('id',bill.id).eq('user_id',user.id).eq('next_due_date',bill.next_due_date).eq('active',true).select('id');
+  if(updated.error||!updated.data?.length){
+   const rollback=await supabase.from('transactions').delete().eq('id',insertedId).eq('user_id',user.id).select('id');
+   if(rollback.error||!rollback.data?.length)throw new Error('Payment recorded but due date NOT advanced. Inspect Transactions and Recurring bills before retrying.');
+   throw updated.error||new Error('Bill was changed elsewhere; payment was cancelled. Reload and try again.');
+  }
+  cancelPayment();await load();notify('Payment recorded for '+money(amount)+'. Next due: '+nextDue+'.');
+ }catch(error){notify('Unable to complete payment: '+error.message,true)}
+ finally{paymentBusy=false;$('payment-submit').disabled=false}
+};
 refreshAuth();
 </script></body></html>
