@@ -29,7 +29,22 @@
 <div id="payment-panel" class="card hidden"><h2>Record payment</h2><p id="payment-bill-detail" class="muted"></p><form id="payment-form"><div class="row"><div><label for="payment-date">Payment date</label><input id="payment-date" name="payment_date" type="date" required></div><div><label for="payment-amount">Paid amount ($)</label><input id="payment-amount" name="paid_amount" type="number" min="0.01" step="0.01" required></div></div><label for="payment-description">Transaction description</label><input id="payment-description" name="description" maxlength="250" required><p id="payment-next-detail" class="muted"></p><div class="actions"><button id="payment-submit" type="submit">Record payment &amp; advance due date</button><button id="payment-cancel" type="button" class="secondary">Cancel</button></div></form></div><div class="card"><h2>Recurring bills</h2><div class="row"><div><label for="bill-filter">Show bills</label><select id="bill-filter"><option value="active">Active</option><option value="all">All</option><option value="inactive">Inactive</option></select></div></div>
 <p id="bill-summary" class="muted"></p>
 <div class="table-wrap"><table><thead><tr><th>Name</th><th>Category</th><th>Expected</th><th>Frequency</th><th>Next due</th><th>Status</th><th>Actions</th></tr></thead><tbody id="bill-rows"></tbody></table></div></div>
-</section><section id="maintenance" class="tab hidden"><div class="card"><h2>Maintenance</h2><p class="muted">This section is coming next. Your maintenance_tasks table is ready.</p></div></section></section></main>
+</section><section id="maintenance" class="tab hidden">
+<div class="card"><h2 id="maintenance-title">Add maintenance task</h2><p class="muted">Track home and vehicle work. Estimated or actual task costs do not change dashboard expenses unless you separately record a transaction.</p>
+<form id="maintenance-form"><div class="row">
+<div><label for="maintenance-task-title">Task</label><input id="maintenance-task-title" name="title" maxlength="150" required placeholder="e.g., Replace HVAC filter"></div>
+<div><label for="maintenance-category">Category</label><select id="maintenance-category" name="category_id" required></select></div>
+<div><label for="maintenance-status">Status</label><select id="maintenance-status" name="status"><option value="planned">Planned</option><option value="in_progress">In progress</option><option value="completed">Completed</option><option value="cancelled">Cancelled</option></select></div>
+<div><label for="maintenance-due">Due date (optional)</label><input id="maintenance-due" name="due_date" type="date"></div>
+<div><label for="maintenance-completed">Completion date (optional)</label><input id="maintenance-completed" name="completed_date" type="date"></div>
+<div><label for="maintenance-repeat">Repeat every (months)</label><input id="maintenance-repeat" name="recurrence_months" type="number" min="1" max="120" step="1" placeholder="Leave blank for one-time"></div>
+<div><label for="maintenance-cost">Task cost ($, optional)</label><input id="maintenance-cost" name="cost" type="number" min="0" step="0.01" placeholder="Not added to expenses"></div>
+<div><label for="maintenance-vendor">Vendor (optional)</label><input id="maintenance-vendor" name="vendor" maxlength="150"></div></div>
+<label for="maintenance-description">Description (optional)</label><textarea id="maintenance-description" name="description" rows="2" maxlength="1000"></textarea>
+<label for="maintenance-notes">Notes (optional)</label><textarea id="maintenance-notes" name="notes" rows="2" maxlength="1000"></textarea>
+<div class="actions"><button type="submit" id="maintenance-submit">Save task</button><button type="button" id="maintenance-cancel" class="secondary hidden">Cancel edit</button></div></form></div>
+<div class="card"><h2>Maintenance tasks</h2><div class="row"><div><label for="maintenance-filter">Show tasks</label><select id="maintenance-filter"><option value="open">Open tasks</option><option value="all">All tasks</option><option value="completed">Completed</option><option value="cancelled">Cancelled</option></select></div></div><p id="maintenance-summary" class="muted"></p>
+<div class="table-wrap"><table><thead><tr><th>Task</th><th>Category</th><th>Due date</th><th>Status</th><th>Repeat</th><th>Cost</th><th>Actions</th></tr></thead><tbody id="maintenance-rows"></tbody></table></div></div></section></section></main>
 <footer>Household Tracker · Private records protected by Supabase Authentication and RLS</footer>
 <script type="module">
 import {createClient} from 'https://esm.sh/@supabase/supabase-js@2';
@@ -37,7 +52,7 @@ const supabase=createClient('https://etvaweudxebrhebuxpfh.supabase.co','sb_publi
 const $=id=>document.getElementById(id);
 const money=n=>new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format(Number(n)||0);
 const today=()=>{const d=new Date();return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-')};
-let user=null,categories=[],transactions=[],bills=[],editingId=null,billEditingId=null,paymentBillId=null,busy=false,billBusy=false,paymentBusy=false,loadVersion=0;
+let user=null,categories=[],transactions=[],bills=[],maintenanceTasks=[],editingId=null,billEditingId=null,maintenanceEditingId=null,paymentBillId=null,busy=false,billBusy=false,maintenanceBusy=false,paymentBusy=false,loadVersion=0;
 function notify(message,bad=false){$('message').textContent=message;$('message').className=bad?'error':'success'}
 function showLogin(signedIn){$('login-view').classList.toggle('hidden',signedIn);$('app-view').classList.toggle('hidden',!signedIn);$('logout').classList.toggle('hidden',!signedIn)}
 function categoryFor(id){return categories.find(c=>c.id===id)}
@@ -58,6 +73,27 @@ function renderBills(){
  }
  if(!visible.length){const tr=document.createElement('tr'),td=document.createElement('td');td.colSpan=7;td.textContent='No recurring bills in this view.';tr.append(td);body.append(tr)}
 }
+function resetMaintenanceForm(){maintenanceEditingId=null;$('maintenance-form').reset();$('maintenance-title').textContent='Add maintenance task';$('maintenance-submit').textContent='Save task';$('maintenance-cancel').classList.add('hidden')}
+function renderMaintenance(){
+ const select=$('maintenance-category'),previous=select.value;select.replaceChildren();const placeholder=document.createElement('option');placeholder.value='';placeholder.textContent='Select category';select.append(placeholder);
+ for(const c of categories.filter(c=>c.section==='Maintenance')){const opt=document.createElement('option');opt.value=c.id;opt.textContent=c.name;select.append(opt)}select.value=previous;
+ const filt=$('maintenance-filter').value;
+ const visible=maintenanceTasks.filter(t=>filt==='all'||(filt==='open'?t.status==='planned'||t.status==='in_progress':t.status===filt));
+ const open=maintenanceTasks.filter(t=>t.status==='planned'||t.status==='in_progress');
+ const overdue=open.filter(t=>t.due_date&&t.due_date<today()).length;
+ $('maintenance-summary').textContent=open.length+' open task(s) · '+overdue+' overdue · '+maintenanceTasks.filter(t=>t.status==='completed').length+' completed';
+ const body=$('maintenance-rows');body.replaceChildren();
+ const states={planned:'Planned',in_progress:'In progress',completed:'Completed',cancelled:'Cancelled'};
+ for(const t of visible){
+   const tr=document.createElement('tr'),cat=categoryFor(t.category_id);
+   const dueStatus=(t.status==='planned'||t.status==='in_progress')&&t.due_date?(t.due_date<today()?' (overdue)':t.due_date===today()?' (due today)':''):'';
+   for(const val of [t.title,cat?.name||'Unknown',(t.due_date||'Not set')+dueStatus,states[t.status]||t.status,t.recurrence_months?('Every '+t.recurrence_months+' mo.'):'One-time',t.cost==null?'—':money(t.cost)]){const td=document.createElement('td');td.textContent=val;tr.append(td)}
+   const actions=document.createElement('td'),edit=document.createElement('button'),del=document.createElement('button');edit.textContent='Edit';edit.className='secondary small';edit.onclick=()=>startMaintenanceEdit(t.id);actions.append(edit);
+   if(t.status==='planned'||t.status==='in_progress'){const complete=document.createElement('button');complete.textContent='Complete';complete.className='small';complete.style.marginLeft='6px';complete.onclick=()=>completeMaintenance(t.id);actions.append(complete)}
+   del.textContent='Delete';del.className='danger small';del.style.marginLeft='6px';del.onclick=()=>deleteMaintenance(t.id);actions.append(del);tr.append(actions);body.append(tr)
+ }
+ if(!visible.length){const tr=document.createElement('tr'),td=document.createElement('td');td.colSpan=7;td.textContent='No maintenance tasks in this view.';tr.append(td);body.append(tr)}
+}
 function render(){
  const options=categories.map(c=>{const o=document.createElement('option');o.value=c.id;o.textContent=c.section+' — '+c.name;return o});
  for(const [id,placeholder] of [['transaction-category','Select category'],['filter-category','All categories']]){const select=$(id),old=select.value;select.replaceChildren();const empty=document.createElement('option');empty.value='';empty.textContent=placeholder;select.append(empty,...options.map(o=>o.cloneNode(true)));select.value=old}
@@ -68,11 +104,12 @@ function render(){
  const current=transactions.filter(t=>t.transaction_date?.startsWith($('month').value));let income=0,expenses=0,allocations=0;const sums={};for(const t of current){const c=categoryFor(t.category_id);if(!c)continue;const amount=Number(t.amount)||0;if(c.section==='Income')income+=amount;else if(c.name==='Savings'||c.name==='Contributions')allocations+=amount;else expenses+=amount;const key=c.section+' — '+c.name;sums[key]=(sums[key]||0)+amount}
  $('income-total').textContent=money(income);$('expense-total').textContent=money(expenses);$('allocation-total').textContent=money(allocations);$('net-total').textContent=money(income-expenses-allocations);const breakdown=$('breakdown');breakdown.replaceChildren();for(const [name,amount] of Object.entries(sums).sort((a,b)=>b[1]-a[1])){const p=document.createElement('p');p.textContent=name+': '+money(amount);breakdown.append(p)}if(!Object.keys(sums).length)breakdown.textContent='No transactions for this month.'
  renderBills();
+ renderMaintenance();
 }
-async function load(){const version=++loadVersion;const [c,t,b]=await Promise.all([supabase.from('categories').select('id,section,name').order('section').order('name'),supabase.from('transactions').select('*').order('transaction_date',{ascending:false}).limit(1000),supabase.from('recurring_bills').select('*').order('next_due_date',{ascending:true}).limit(1000)]);if(c.error)throw c.error;if(t.error)throw t.error;if(b.error)throw b.error;if(version!==loadVersion)return;categories=c.data||[];transactions=t.data||[];bills=b.data||[];render();if(!categories.length)notify('No categories found for your account.',true)}
+async function load(){const version=++loadVersion;const [c,t,b,m]=await Promise.all([supabase.from('categories').select('id,section,name').order('section').order('name'),supabase.from('transactions').select('*').order('transaction_date',{ascending:false}).limit(1000),supabase.from('recurring_bills').select('*').order('next_due_date',{ascending:true}).limit(1000),supabase.from('maintenance_tasks').select('*').order('due_date',{ascending:true,nullsFirst:false}).limit(1000)]);if(c.error)throw c.error;if(t.error)throw t.error;if(b.error)throw b.error;if(m.error)throw m.error;if(version!==loadVersion)return;categories=c.data||[];transactions=t.data||[];bills=b.data||[];maintenanceTasks=m.data||[];render();if(!categories.length)notify('No categories found for your account.',true)}
 async function refreshAuth(){const {data:{user:u},error}=await supabase.auth.getUser();if(error&&error.name!=='AuthSessionMissingError')notify(error.message,true);user=u;showLogin(!!user);if(user){try{await load()}catch(e){notify('Unable to load data: '+e.message,true)}}}
 $('login-form').onsubmit=async e=>{e.preventDefault();notify('Signing in…');const {error}=await supabase.auth.signInWithPassword({email:$('email').value,password:$('password').value});if(error)return notify(error.message,true);$('password').value='';notify('Signed in.');await refreshAuth()};
-$('logout').onclick=async()=>{const {error}=await supabase.auth.signOut();if(error)return notify(error.message,true);++loadVersion;user=null;categories=[];transactions=[];bills=[];resetForm();resetBillForm();cancelPayment();notify('Signed out.');showLogin(false)};
+$('logout').onclick=async()=>{const {error}=await supabase.auth.signOut();if(error)return notify(error.message,true);++loadVersion;user=null;categories=[];transactions=[];bills=[];maintenanceTasks=[];resetForm();resetBillForm();resetMaintenanceForm();cancelPayment();notify('Signed out.');showLogin(false)};
 document.querySelectorAll('[data-tab]').forEach(button=>button.onclick=()=>{document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',b===button));document.querySelectorAll('.tab').forEach(tab=>tab.classList.toggle('hidden',tab.id!==button.dataset.tab))});
 $('month').value=today().slice(0,7);$('month').onchange=render;$('filter-month').onchange=render;$('filter-category').onchange=render;$('transaction-date').value=today();$('cancel-edit').onclick=resetForm;
 function startEdit(id){const t=transactions.find(x=>x.id===id);if(!t)return;editingId=id;$('transaction-date').value=t.transaction_date;$('transaction-category').value=t.category_id;$('transaction-amount').value=t.amount;$('transaction-description').value=t.description||'';$('form-title').textContent='Edit transaction';$('save-transaction').textContent='Update transaction';$('cancel-edit').classList.remove('hidden');$('transaction-form').scrollIntoView({behavior:'smooth',block:'start'})}
@@ -124,5 +161,26 @@ $('payment-form').onsubmit=async e=>{
  }catch(error){notify('Unable to complete payment: '+error.message,true)}
  finally{paymentBusy=false;$('payment-submit').disabled=false}
 };
+$('maintenance-filter').onchange=renderMaintenance;$('maintenance-cancel').onclick=resetMaintenanceForm;
+function startMaintenanceEdit(id){const task=maintenanceTasks.find(t=>t.id===id);if(!task)return;maintenanceEditingId=id;const f=$('maintenance-form');for(const key of ['title','category_id','status','due_date','completed_date','recurrence_months','cost','vendor','description','notes'])f.elements[key].value=task[key]??'';$('maintenance-title').textContent='Edit maintenance task';$('maintenance-submit').textContent='Update task';$('maintenance-cancel').classList.remove('hidden');f.scrollIntoView({behavior:'smooth',block:'start'})}
+$('maintenance-form').onsubmit=async e=>{
+ e.preventDefault();if(!user||maintenanceBusy)return;const f=new FormData(e.currentTarget),status=String(f.get('status'));let completedDate=f.get('completed_date')||null;
+ if(status==='completed'&&!completedDate)completedDate=today();if(status!=='completed')completedDate=null;
+ const recurrenceInput=String(f.get('recurrence_months')||'').trim(),costInput=String(f.get('cost')||'').trim();
+ const row={title:String(f.get('title')||'').trim(),category_id:f.get('category_id'),status,due_date:f.get('due_date')||null,completed_date:completedDate,recurrence_months:recurrenceInput?Number(recurrenceInput):null,cost:costInput?Number(costInput):null,vendor:String(f.get('vendor')||'').trim()||null,description:String(f.get('description')||'').trim()||null,notes:String(f.get('notes')||'').trim()||null};
+ if(!row.title||!row.category_id||!categories.some(c=>c.id===row.category_id&&c.section==='Maintenance'))return notify('Enter a task and a maintenance category.',true);
+ if(row.recurrence_months!==null&&(!Number.isInteger(row.recurrence_months)||row.recurrence_months<=0))return notify('Recurrence must be a positive whole number of months.',true);
+ if(row.cost!==null&&(!Number.isFinite(row.cost)||row.cost<0))return notify('Enter a valid nonnegative cost.',true);
+ maintenanceBusy=true;$('maintenance-submit').disabled=true;
+ try{const updating=!!maintenanceEditingId;const result=updating?await supabase.from('maintenance_tasks').update(row).eq('id',maintenanceEditingId).eq('user_id',user.id).select('id'):await supabase.from('maintenance_tasks').insert({...row,user_id:user.id}).select('id');if(result.error)throw result.error;if(!result.data?.length)throw new Error('Task could not be saved.');resetMaintenanceForm();await load();notify(updating?'Maintenance task updated.':'Maintenance task saved.')}catch(err){notify('Unable to save maintenance task: '+err.message,true)}finally{maintenanceBusy=false;$('maintenance-submit').disabled=false}
+};
+async function completeMaintenance(id){if(!user||maintenanceBusy)return;const task=maintenanceTasks.find(t=>t.id===id);if(!task)return;
+ const date=today();if(!confirm('Mark "'+task.title+'" completed on '+date+'?'+(task.recurrence_months?' The task will retain its recurrence setting for reference.':'')))return;
+ maintenanceBusy=true;
+ try{const {data,error}=await supabase.from('maintenance_tasks').update({status:'completed',completed_date:date}).eq('id',id).eq('user_id',user.id).in('status',['planned','in_progress']).select('id');if(error)throw error;if(!data?.length)throw new Error('Task was changed or not found.');await load();notify('Maintenance task marked completed.')}catch(err){notify('Unable to complete task: '+err.message,true)}finally{maintenanceBusy=false}
+}
+async function deleteMaintenance(id){if(!user||maintenanceBusy||!confirm('Permanently delete this maintenance task? This does not delete any transactions.'))return;
+ maintenanceBusy=true;try{const {data,error}=await supabase.from('maintenance_tasks').delete().eq('id',id).eq('user_id',user.id).select('id');if(error)throw error;if(!data?.length)throw new Error('Task not found.');if(maintenanceEditingId===id)resetMaintenanceForm();await load();notify('Maintenance task deleted.')}catch(err){notify('Unable to delete task: '+err.message,true)}finally{maintenanceBusy=false}
+}
 refreshAuth();
 </script></body></html>
