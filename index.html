@@ -174,10 +174,58 @@ $('maintenance-form').onsubmit=async e=>{
  maintenanceBusy=true;$('maintenance-submit').disabled=true;
  try{const updating=!!maintenanceEditingId;const result=updating?await supabase.from('maintenance_tasks').update(row).eq('id',maintenanceEditingId).eq('user_id',user.id).select('id'):await supabase.from('maintenance_tasks').insert({...row,user_id:user.id}).select('id');if(result.error)throw result.error;if(!result.data?.length)throw new Error('Task could not be saved.');resetMaintenanceForm();await load();notify(updating?'Maintenance task updated.':'Maintenance task saved.')}catch(err){notify('Unable to save maintenance task: '+err.message,true)}finally{maintenanceBusy=false;$('maintenance-submit').disabled=false}
 };
-async function completeMaintenance(id){if(!user||maintenanceBusy)return;const task=maintenanceTasks.find(t=>t.id===id);if(!task)return;
- const date=today();if(!confirm('Mark "'+task.title+'" completed on '+date+'?'+(task.recurrence_months?' The task will retain its recurrence setting for reference.':'')))return;
+// Calendar-month recurrence: preserve day where possible and clamp at month end.
+function addMaintenanceMonths(date,months){
+ const parts=date.split('-').map(Number);
+ if(parts.length!==3||!Number.isInteger(months)||months<1)throw new Error('Invalid maintenance recurrence.');
+ const [year,month,day]=parts;
+ const base=new Date(Date.UTC(year,month-1,day));
+ if(base.getUTCFullYear()!==year||base.getUTCMonth()!==month-1||base.getUTCDate()!==day)throw new Error('Invalid completion date.');
+ const target=new Date(Date.UTC(year,month-1+months,1));
+ const last=new Date(Date.UTC(target.getUTCFullYear(),target.getUTCMonth()+1,0)).getUTCDate();
+ target.setUTCDate(Math.min(day,last));
+ return target.toISOString().slice(0,10)
+}
+async function completeMaintenance(id){
+ if(!user||maintenanceBusy)return;
+ const task=maintenanceTasks.find(t=>t.id===id);
+ if(!task||!['planned','in_progress'].includes(task.status))return;
+ const completed=today();
+ const recurring=Number.isInteger(Number(task.recurrence_months))&&Number(task.recurrence_months)>0;
+ const nextDate=recurring?addMaintenanceMonths(completed,Number(task.recurrence_months)):null;
+ const message='Mark "'+task.title+'" completed on '+completed+'?'+(recurring?' A new task will be scheduled for '+nextDate+'.':'');
+ if(!confirm(message))return;
  maintenanceBusy=true;
- try{const {data,error}=await supabase.from('maintenance_tasks').update({status:'completed',completed_date:date}).eq('id',id).eq('user_id',user.id).in('status',['planned','in_progress']).select('id');if(error)throw error;if(!data?.length)throw new Error('Task was changed or not found.');await load();notify('Maintenance task marked completed.')}catch(err){notify('Unable to complete task: '+err.message,true)}finally{maintenanceBusy=false}
+ let originalCompleted=false;
+ try{
+  // Conditional update prevents repeated clicks from generating repeated tasks.
+  const updated=await supabase.from('maintenance_tasks').update({status:'completed',completed_date:completed})
+   .eq('id',id).eq('user_id',user.id).in('status',['planned','in_progress']).select('id');
+  if(updated.error)throw updated.error;
+  if(!updated.data?.length)throw new Error('Task was already completed, changed, or deleted. Reload before retrying.');
+  originalCompleted=true;
+  if(recurring){
+   const nextTask={user_id:user.id,category_id:task.category_id,title:task.title,
+     description:task.description||null,due_date:nextDate,completed_date:null,status:'planned',
+     recurrence_months:Number(task.recurrence_months),cost:null,vendor:task.vendor||null,notes:task.notes||null};
+   const inserted=await supabase.from('maintenance_tasks').insert(nextTask).select('id');
+   if(inserted.error||!inserted.data?.length){
+    // Best-effort rollback. If it fails, explicitly tell the user not to retry blindly.
+    const rollback=await supabase.from('maintenance_tasks')
+     .update({status:task.status,completed_date:task.completed_date||null})
+     .eq('id',id).eq('user_id',user.id).eq('status','completed').eq('completed_date',completed).select('id');
+    if(rollback.error||!rollback.data?.length)throw new Error('Task marked completed but next task was NOT created. Check maintenance history before retrying.');
+    originalCompleted=false;
+    throw inserted.error||new Error('Next task was not created; completion was reversed.');
+   }
+  }
+  if(maintenanceEditingId===id)resetMaintenanceForm();
+  await load();
+  notify(recurring?'Maintenance completed. Next task scheduled for '+nextDate+'.':'Maintenance task marked completed.');
+ }catch(err){
+  notify('Unable to complete maintenance: '+err.message,true);
+  // Do not retry automatically: a partial operation may have succeeded.
+ }finally{maintenanceBusy=false}
 }
 async function deleteMaintenance(id){if(!user||maintenanceBusy||!confirm('Permanently delete this maintenance task? This does not delete any transactions.'))return;
  maintenanceBusy=true;try{const {data,error}=await supabase.from('maintenance_tasks').delete().eq('id',id).eq('user_id',user.id).select('id');if(error)throw error;if(!data?.length)throw new Error('Task not found.');if(maintenanceEditingId===id)resetMaintenanceForm();await load();notify('Maintenance task deleted.')}catch(err){notify('Unable to delete task: '+err.message,true)}finally{maintenanceBusy=false}
